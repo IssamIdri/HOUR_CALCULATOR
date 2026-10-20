@@ -264,8 +264,9 @@ function parseShiftType(value: string): ShiftType | null {
 }
 
 function normalizeClock(value: string): string | null {
-  const trimmed = value.trim().replace('h', ':').replace('H', ':')
-  const match = /^(\d{1,2}):(\d{2})$/.exec(trimmed)
+  // Excel réécrit souvent 11:30 en 11:30:00.
+  const trimmed = value.trim().replace(/[hH]/g, ':')
+  const match = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(trimmed)
   if (!match) return null
   const hours = Number(match[1])
   const minutes = Number(match[2])

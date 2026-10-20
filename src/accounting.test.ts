@@ -304,4 +304,28 @@ describe('conservation et import', () => {
     expect(parseShiftsCsv('Date;Service\r\n20/10/2026;Midi').ok).toBe(false)
     expect(parseShiftsCsv('').ok).toBe(false)
   })
+
+  it('accepte un CSV réécrit par Excel avec secondes et taux entier', () => {
+    const excelCsv =
+      '\uFEFFDate;Service;Début;Fin;Pause (min);Durée (min);Durée;Taux horaire;Montant;Notes\r\n' +
+      '08/10/2026;Midi;11:30:00;14:30:00;0;180;3 h;10;30;\r\n' +
+      '10/10/2026;Soir;18:30:00;00:00:00;0;330;5 h 30;10;55;\r\n'
+    const parsed = parseShiftsCsv(excelCsv, NOW)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw new Error(parsed.error)
+    expect(parsed.shifts).toHaveLength(2)
+    expect(parsed.shifts[0]).toMatchObject({
+      date: '2026-10-08',
+      type: 'midi',
+      start: '11:30',
+      end: '14:30',
+      hourlyRateCents: 1000,
+    })
+    expect(parsed.shifts[1]).toMatchObject({
+      start: '18:30',
+      end: '00:00',
+      hourlyRateCents: 1000,
+    })
+    expect(shiftAmountCents(parsed.shifts[1])).toBe(5500)
+  })
 })
