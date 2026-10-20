@@ -52,7 +52,7 @@ Tout est enregistré dans le navigateur (`localStorage`), sur cet appareil seule
 
 Utilisez **Paramètres → Sauvegarde JSON** régulièrement. L’import vérifie la structure du fichier et demande une confirmation avant de remplacer le mode ouvert (réel ou démonstration). L’autre mode n’est pas touché.
 
-Les CSV utilisent le point-virgule et un encodage compatible avec Excel en français.
+Les CSV utilisent le point-virgule et un encodage compatible avec Excel en français. **Paramètres → Importer un CSV de services** lit le même format que l’export : les services sont ajoutés sans effacer l’existant, après confirmation.
 
 Le relevé mensuel s’ouvre dans **Relevé mensuel (PDF)** : le navigateur propose d’imprimer ou d’enregistrer en PDF.
 

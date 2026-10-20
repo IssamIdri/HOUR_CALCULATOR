@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseBackup, serializeBackup } from './data/backup.ts'
-import { paymentsToCsv, shiftsToCsv } from './data/csv.ts'
+import { parseShiftsCsv, paymentsToCsv, shiftsToCsv } from './data/csv.ts'
 import { createLocalRepository } from './data/repository.ts'
 import { STORAGE_CORRUPT_KEY, STORAGE_KEY, STORAGE_PREVIOUS_KEY, createInitialState, createMemoryStore } from './data/storage.ts'
 import { createShift } from './domain/drafts.ts'
@@ -249,5 +249,59 @@ describe('conservation et import', () => {
     const previous = series.find((point) => point.key === '2026-10-12')
     expect(current?.minutes).toBe(180)
     expect(previous?.minutes).toBe(960)
+  })
+
+  it('réimporte un CSV de services au format de l’export', () => {
+    const source = [
+      makeShift({
+        id: 'midi',
+        type: 'midi',
+        start: '12:00',
+        end: '15:00',
+        notes: 'Il a dit "ok"',
+      }),
+      makeShift({
+        id: 'soir',
+        type: 'soir',
+        start: '19:00',
+        end: '00:30',
+        breakMinutes: 30,
+        hourlyRateCents: 1250,
+      }),
+    ]
+    const csv = shiftsToCsv(source)
+    const parsed = parseShiftsCsv(csv, NOW)
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) throw new Error(parsed.error)
+    expect(parsed.shifts).toHaveLength(2)
+    expect(parsed.shifts[0]).toMatchObject({
+      date: '2026-10-20',
+      type: 'midi',
+      start: '12:00',
+      end: '15:00',
+      breakMinutes: 0,
+      hourlyRateCents: 1200,
+      notes: 'Il a dit "ok"',
+    })
+    expect(shiftAmountCents(parsed.shifts[0])).toBe(3600)
+    expect(parsed.shifts[1]).toMatchObject({
+      type: 'soir',
+      start: '19:00',
+      end: '00:30',
+      breakMinutes: 30,
+      hourlyRateCents: 1250,
+    })
+    expect(shiftAmountCents(parsed.shifts[1])).toBe(6250)
+
+    let state = createInitialState()
+    state = reducer(state, { type: 'save-shift', shift: makeShift({ id: 'existant', start: '10:00', end: '11:00' }) })
+    state = reducer(state, { type: 'import-shifts', shifts: parsed.shifts })
+    expect(state.real.shifts).toHaveLength(3)
+    expect(totalEarnedCents(state.real.shifts)).toBe(1200 + 3600 + 6250)
+  })
+
+  it('refuse un CSV de services invalide', () => {
+    expect(parseShiftsCsv('Date;Service\r\n20/10/2026;Midi').ok).toBe(false)
+    expect(parseShiftsCsv('').ok).toBe(false)
   })
 })

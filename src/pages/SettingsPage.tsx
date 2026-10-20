@@ -2,12 +2,14 @@ import { useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { parseBackup, serializeBackup } from '../data/backup.ts'
-import { paymentsToCsv, shiftsToCsv } from '../data/csv.ts'
+import { parseShiftsCsv, paymentsToCsv, shiftsToCsv } from '../data/csv.ts'
 import { Button, ConfirmDialog, Page, PageHeader, TextField } from '../components/ui.tsx'
 import { todayIso } from '../domain/dates.ts'
-import { centsToInput, parseEurosToCents } from '../domain/money.ts'
+import { totalEarnedCents, totalMinutes } from '../domain/ledger.ts'
+import { centsToInput, formatMoney, parseEurosToCents } from '../domain/money.ts'
 import { validateSettings } from '../domain/settings.ts'
-import type { Dataset, WeekStartsOn } from '../domain/types.ts'
+import { formatDuration } from '../domain/time.ts'
+import type { Dataset, Shift, WeekStartsOn } from '../domain/types.ts'
 import { usePageTitle } from '../hooks/usePageTitle.ts'
 import { downloadText } from '../lib/download.ts'
 import { useApp } from '../state/AppState.tsx'
@@ -38,7 +40,7 @@ function toDraft(settings: Dataset['settings']): Draft {
 
 export function SettingsPage() {
   usePageTitle('Paramètres')
-  const { dataset, mode, setMode, updateSettings, importDataset, resetDemo, clearReal } = useApp()
+  const { dataset, mode, setMode, updateSettings, importDataset, importShifts, resetDemo, clearReal } = useApp()
   const [seenSettings, setSeenSettings] = useState(dataset.settings)
   const [draft, setDraft] = useState(() => toDraft(dataset.settings))
   if (seenSettings !== dataset.settings) {
@@ -48,10 +50,14 @@ export function SettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const [csvError, setCsvError] = useState<string | null>(null)
+  const [csvSuccess, setCsvSuccess] = useState<string | null>(null)
   const [pendingImport, setPendingImport] = useState<Dataset | null>(null)
+  const [pendingCsvShifts, setPendingCsvShifts] = useState<Shift[] | null>(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const csvRef = useRef<HTMLInputElement>(null)
 
   function saveSettings() {
     const rate = parseEurosToCents(draft.rate)
@@ -100,7 +106,36 @@ export function SettingsPage() {
         return
       }
       setImportError(null)
+      setCsvError(null)
       setPendingImport(result.dataset)
+    }
+    reader.readAsText(file)
+  }
+
+  function onCsvFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const text = typeof reader.result === 'string' ? reader.result : ''
+      const result = parseShiftsCsv(text)
+      if (!result.ok) {
+        setCsvError(result.error)
+        setCsvSuccess(null)
+        setPendingCsvShifts(null)
+        return
+      }
+      if (dataset.shifts.length + result.shifts.length > 5000) {
+        setCsvError(
+          `L’import ajouterait trop de services (${dataset.shifts.length + result.shifts.length}). Le maximum est de 5 000.`,
+        )
+        setPendingCsvShifts(null)
+        return
+      }
+      setCsvError(null)
+      setCsvSuccess(null)
+      setPendingCsvShifts(result.shifts)
     }
     reader.readAsText(file)
   }
@@ -173,6 +208,21 @@ export function SettingsPage() {
           <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onFile} />
         </div>
         {importError ? <p className="mt-3 text-sm text-rose-600">{importError}</p> : null}
+
+        <div className="mt-5 border-t border-slate-100 pt-5">
+          <h3 className="text-base font-semibold">Importer des services (CSV)</h3>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            Utilisez un fichier au même format que l’export Excel : colonnes Date, Service, Début, Fin, Pause (min), Taux horaire, Notes, séparées par des points-virgules. Les services sont ajoutés à ceux déjà enregistrés. Les paiements ne sont pas modifiés.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => csvRef.current?.click()}>
+              Importer un CSV de services
+            </Button>
+            <input ref={csvRef} type="file" accept=".csv,text/csv" className="hidden" onChange={onCsvFile} />
+          </div>
+          {csvError ? <p className="mt-3 text-sm text-rose-600">{csvError}</p> : null}
+          {csvSuccess ? <p className="mt-3 text-sm text-teal-800">{csvSuccess}</p> : null}
+        </div>
       </section>
 
       <section className="mt-4 rounded-3xl bg-white p-5 ring-1 ring-slate-200/80">
@@ -205,6 +255,26 @@ export function SettingsPage() {
         onConfirm={() => {
           if (pendingImport) importDataset(pendingImport)
           setPendingImport(null)
+        }}
+      />
+      <ConfirmDialog
+        open={pendingCsvShifts !== null}
+        title="Ajouter ces services ?"
+        message={
+          pendingCsvShifts
+            ? `${pendingCsvShifts.length} service${pendingCsvShifts.length > 1 ? 's' : ''} seront ajoutés (${formatDuration(totalMinutes(pendingCsvShifts))}, ${formatMoney(totalEarnedCents(pendingCsvShifts))}). Les services et paiements déjà présents restent en place. Le solde sera recalculé.`
+            : ''
+        }
+        confirmLabel="Ajouter"
+        onCancel={() => setPendingCsvShifts(null)}
+        onConfirm={() => {
+          if (!pendingCsvShifts) return
+          const count = pendingCsvShifts.length
+          importShifts(pendingCsvShifts)
+          setPendingCsvShifts(null)
+          setCsvSuccess(
+            `${count} service${count > 1 ? 's' : ''} importé${count > 1 ? 's' : ''}. Vous les retrouvez dans Services et Historique.`,
+          )
         }}
       />
       <ConfirmDialog

@@ -21,6 +21,7 @@ export interface AppApi {
   savePayment: (payment: Payment) => void
   deletePayment: (id: string) => void
   importDataset: (dataset: Dataset) => void
+  importShifts: (shifts: Shift[]) => void
   resetDemo: () => void
   clearReal: () => void
 }
@@ -74,6 +75,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       savePayment: (payment) => dispatch({ type: 'save-payment', payment }),
       deletePayment: (id) => dispatch({ type: 'delete-payment', id }),
       importDataset: (dataset) => dispatch({ type: 'replace-dataset', dataset }),
+      importShifts: (shifts) => dispatch({ type: 'import-shifts', shifts }),
       resetDemo: () => dispatch({ type: 'reset-demo' }),
       clearReal: () => dispatch({ type: 'clear-real' }),
     }

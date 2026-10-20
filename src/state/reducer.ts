@@ -10,6 +10,7 @@ export type Action =
   | { type: 'save-payment'; payment: Payment }
   | { type: 'delete-payment'; id: string }
   | { type: 'replace-dataset'; dataset: Dataset }
+  | { type: 'import-shifts'; shifts: Shift[] }
   | { type: 'reset-demo' }
   | { type: 'clear-real' }
 
@@ -35,6 +36,11 @@ export function reducer(state: PersistedState, action: Action): PersistedState {
       }))
     case 'replace-dataset':
       return withActive(state, () => action.dataset)
+    case 'import-shifts':
+      return withActive(state, (dataset) => ({
+        ...dataset,
+        shifts: [...dataset.shifts, ...action.shifts],
+      }))
     case 'reset-demo':
       return { ...state, demo: createDemoDataset() }
     case 'clear-real':
